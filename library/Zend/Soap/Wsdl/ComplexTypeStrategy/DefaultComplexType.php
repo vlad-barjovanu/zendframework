@@ -19,6 +19,7 @@ class DefaultComplexType extends AbstractComplexTypeStrategy
      * Add a complex type by recursively using all the class properties fetched via Reflection.
      *
      * @param  string $type Name of the class to be specified
+     *
      * @return string XSD Type for the given PHP type
      * @throws Exception\InvalidArgumentException if class does not exist
      */
@@ -32,7 +33,7 @@ class DefaultComplexType extends AbstractComplexTypeStrategy
             ));
         }
 
-        $class   = new ReflectionClass($type);
+        $class = new ReflectionClass($type);
         $phpType = $class->getName();
 
         if (($soapType = $this->scanRegisteredTypes($phpType)) !== null) {
@@ -41,7 +42,7 @@ class DefaultComplexType extends AbstractComplexTypeStrategy
 
         $dom = $this->getContext()->toDomDocument();
         $soapTypeName = $this->getContext()->translateType($phpType);
-        $soapType     = Wsdl::TYPES_NS . ':' . $soapTypeName;
+        $soapType = Wsdl::TYPES_NS . ':' . $soapTypeName;
 
         // Register type here to avoid recursion
         $this->getContext()->addType($phpType, $soapType);
@@ -54,7 +55,7 @@ class DefaultComplexType extends AbstractComplexTypeStrategy
         $all = $dom->createElementNS(Wsdl::XSD_NS_URI, 'all');
 
         foreach ($class->getProperties() as $property) {
-            if ($property->isPublic() && preg_match_all('/@var\s+([^\s]+)/m', $property->getDocComment(), $matches)) {
+            if ($property->isPublic() && preg_match_all('/@var\s+([^\s]+)((?:(?!\*\/).)*)/m', $property->getDocComment(), $matches)) {
                 /**
                  * @todo check if 'xsd:element' must be used here (it may not be
                  * compatible with using 'complexType' node for describing other
@@ -63,10 +64,18 @@ class DefaultComplexType extends AbstractComplexTypeStrategy
                 $element = $dom->createElementNS(Wsdl::XSD_NS_URI, 'element');
                 $element->setAttribute('name', $propertyName = $property->getName());
                 $element->setAttribute('type', $this->getContext()->getType(trim($matches[1][0])));
-
                 // If the default value is null, then this property is nillable.
                 if ($defaultProperties[$propertyName] === null) {
                     $element->setAttribute('nillable', 'true');
+                }
+
+                if (!empty($matches[2][0])) {
+                    $elementAnot = $dom->createElementNS(Wsdl::XSD_NS_URI, 'annotation');
+                    $elementDoc = $dom->createElementNS(Wsdl::XSD_NS_URI, 'documentation');
+                    $elementDoc->setAttribute('lang', 'en');
+                    $elementDoc->nodeValue = $matches[2][0];
+                    $elementAnot->appendChild($elementDoc);
+                    $element->appendChild($elementAnot);
                 }
 
                 $all->appendChild($element);
